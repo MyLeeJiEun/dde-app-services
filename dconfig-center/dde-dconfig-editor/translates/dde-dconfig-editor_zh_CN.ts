@@ -14,6 +14,11 @@
         <translation>复制值</translation>
     </message>
     <message>
+        <location filename="../mainwindow.cpp" line="624"/>
+        <source>copy field name</source>
+        <translation>复制字段名</translation>
+    </message>
+    <message>
         <location filename="../mainwindow.cpp" line="593"/>
         <source>convert to cmd</source>
         <translation>复制命令</translation>

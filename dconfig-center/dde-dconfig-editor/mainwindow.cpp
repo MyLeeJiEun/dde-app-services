@@ -621,7 +621,8 @@ void Content::onCustomContextMenuRequested(QWidget *widget, const QString &appid
     QMenu *menu = new QMenu(widget);
 
     QAction *exportAction = menu->addAction(tr("export"));
-    QAction *copyAction = menu->addAction(tr("copy value"));
+    QAction *copyFieldAction = menu->addAction(tr("copy field name"));
+    QAction *copyValueAction = menu->addAction(tr("copy value"));
     QAction *copyCmdAction = menu->addAction(tr("convert to cmd"));
     QAction *resetCmdAction = menu->addAction(tr("reset value"));
 
@@ -653,7 +654,10 @@ void Content::onCustomContextMenuRequested(QWidget *widget, const QString &appid
         }
     });
     QClipboard *clip = QApplication::clipboard();
-    connect(copyAction, &QAction::triggered, this, [clip, value] {
+    connect(copyFieldAction, &QAction::triggered, this, [clip, key] {
+        clip->setText(key);
+    });
+    connect(copyValueAction, &QAction::triggered, this, [clip, value] {
         clip->setText(value);
     });
     connect(copyCmdAction, &QAction::triggered, this, [clip, setCmd] {
