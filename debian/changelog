@@ -1,3 +1,14 @@
+dde-app-services (1.0.45) unstable; urgency=medium
+
+  * chore: Sync by
+    https://github.com/linuxdeepin/.github/commit/88706fa723e3771211cb07
+    81d3d97fd4a6cd2a68
+  * feat(dconfig-editor): add copy field name in context menu
+  * fix: improve process name resolution for DBus clients
+  * feat: improve dde-dconfig CLI with empty appid support and enhanced
+
+ -- yeshanshan <yeshanshan@uniontech.com>  Thu, 16 Jul 2026 19:32:57 +0800
+
 dde-app-services (1.0.44) unstable; urgency=medium
 
   * fix: support uppercase filenames and prevent reload abort on partial
