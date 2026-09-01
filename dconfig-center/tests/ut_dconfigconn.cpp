@@ -427,18 +427,19 @@ TEST_F(ut_DConfigResource, reparse_withRemovedKey_removesFromCache) {
     QString metaPath = configPath();
     {
         MetaFileGuard guard(metaPath);
-        QFile file(metaPath);
-        ASSERT_TRUE(file.open(QIODevice::ReadOnly));
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        file.close();
+        QFile readFile(metaPath);
+        ASSERT_TRUE(readFile.open(QIODevice::ReadOnly));
+        QJsonDocument doc = QJsonDocument::fromJson(readFile.readAll());
+        readFile.close();
         QJsonObject root = doc.object();
         QJsonObject contents = root.value("contents").toObject();
         contents.remove("canExit");
         root["contents"] = contents;
         doc.setObject(root);
-        ASSERT_TRUE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-        file.write(doc.toJson());
-        file.close();
+        QFile writeFile(metaPath);
+        ASSERT_TRUE(writeFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        writeFile.write(doc.toJson());
+        writeFile.close();
         ASSERT_TRUE(resource->reparse(APP_ID));
         EXPECT_FALSE(conn->value("canExit").variant().isValid());
     }
@@ -457,10 +458,10 @@ TEST_F(ut_DConfigResource, reparse_withPermissionChange_removesFromCache) {
     QString metaPath = configPath();
     {
         MetaFileGuard guard(metaPath);
-        QFile file(metaPath);
-        ASSERT_TRUE(file.open(QIODevice::ReadOnly));
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        file.close();
+        QFile readFile(metaPath);
+        ASSERT_TRUE(readFile.open(QIODevice::ReadOnly));
+        QJsonDocument doc = QJsonDocument::fromJson(readFile.readAll());
+        readFile.close();
         QJsonObject root = doc.object();
         QJsonObject contents = root.value("contents").toObject();
         QJsonObject canExit = contents.value("canExit").toObject();
@@ -468,9 +469,10 @@ TEST_F(ut_DConfigResource, reparse_withPermissionChange_removesFromCache) {
         contents["canExit"] = canExit;
         root["contents"] = contents;
         doc.setObject(root);
-        ASSERT_TRUE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-        file.write(doc.toJson());
-        file.close();
+        QFile writeFile(metaPath);
+        ASSERT_TRUE(writeFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        writeFile.write(doc.toJson());
+        writeFile.close();
         ASSERT_TRUE(resource->reparse(APP_ID));
         conn->setValue("canExit", QDBusVariant{false});
         EXPECT_EQ(conn->value("canExit").variant(), true);
@@ -519,3 +521,165 @@ TEST_F(ut_DConfigConn, doSyncConfigCache_savesCache) {
 }
 
 
+
+// Coverage-11: Branch coverage tests for DSGConfigConn
+
+// Branch: description() with non-existent key returns ""
+TEST_F(ut_DConfigConn, description_nonExistentKey_returnsEmpty) {
+    ASSERT_EQ(conn->description("nonexistent_key", ""), QString());
+    ASSERT_EQ(conn->description("nonexistent_key", "en_US"), QString());
+}
+
+// Branch: name() with non-existent key returns ""
+TEST_F(ut_DConfigConn, name_nonExistentKey_returnsEmpty) {
+    ASSERT_EQ(conn->name("nonexistent_key", ""), QString());
+    ASSERT_EQ(conn->name("nonexistent_key", "zh_CN"), QString());
+}
+
+// Branch: value() with non-existent key returns empty QDBusVariant
+TEST_F(ut_DConfigConn, value_nonExistentKey_returnsEmpty) {
+    auto result = conn->value("nonexistent_key");
+    ASSERT_FALSE(result.variant().isValid());
+}
+
+// Branch: setValue() with non-existent key does nothing (early return)
+TEST_F(ut_DConfigConn, setValue_nonExistentKey_noChange) {
+    QSignalSpy valueSpy(conn, &DSGConfigConn::valueChanged);
+    QSignalSpy globalSpy(conn, &DSGConfigConn::globalValueChanged);
+    conn->setValue("nonexistent_key", QDBusVariant{42});
+    ASSERT_EQ(valueSpy.count(), 0);
+    ASSERT_EQ(globalSpy.count(), 0);
+}
+
+// Branch: setValue() with global flag key emits globalValueChanged
+TEST_F(ut_DConfigConn, setValue_globalKey_emitsGlobalValueChanged) {
+    QSignalSpy valueSpy(conn, &DSGConfigConn::valueChanged);
+    QSignalSpy globalSpy(conn, &DSGConfigConn::globalValueChanged);
+    conn->setValue("array", QDBusVariant{QStringList{"new1", "new2"}});
+    ASSERT_EQ(globalSpy.count(), 1);
+    ASSERT_EQ(valueSpy.count(), 0);
+}
+
+// Branch: setValue() with non-global key emits valueChanged
+TEST_F(ut_DConfigConn, setValue_nonGlobalKey_emitsValueChanged) {
+    QSignalSpy valueSpy(conn, &DSGConfigConn::valueChanged);
+    QSignalSpy globalSpy(conn, &DSGConfigConn::globalValueChanged);
+    conn->setValue("canExit", QDBusVariant{false});
+    ASSERT_EQ(valueSpy.count(), 1);
+    ASSERT_EQ(globalSpy.count(), 0);
+}
+
+// Branch: reset() with existing non-global key emits valueChanged
+TEST_F(ut_DConfigConn, reset_existingNonGlobalKey_emitsValueChanged) {
+    conn->setValue("canExit", QDBusVariant{false});
+    ASSERT_EQ(conn->value("canExit").variant(), false);
+    QSignalSpy valueSpy(conn, &DSGConfigConn::valueChanged);
+    QSignalSpy globalSpy(conn, &DSGConfigConn::globalValueChanged);
+    conn->reset("canExit");
+    ASSERT_EQ(valueSpy.count(), 1);
+    ASSERT_EQ(globalSpy.count(), 0);
+}
+
+// Branch: reset() with existing global key emits globalValueChanged
+TEST_F(ut_DConfigConn, reset_globalKey_emitsGlobalValueChanged) {
+    conn->setValue("array", QDBusVariant{QStringList{"new1", "new2"}});
+    QSignalSpy valueSpy(conn, &DSGConfigConn::valueChanged);
+    QSignalSpy globalSpy(conn, &DSGConfigConn::globalValueChanged);
+    conn->reset("array");
+    ASSERT_EQ(globalSpy.count(), 1);
+    ASSERT_EQ(valueSpy.count(), 0);
+}
+
+// Branch: reset() with non-existent key does nothing
+TEST_F(ut_DConfigConn, reset_nonExistentKey_noChange) {
+    QSignalSpy valueSpy(conn, &DSGConfigConn::valueChanged);
+    QSignalSpy globalSpy(conn, &DSGConfigConn::globalValueChanged);
+    conn->reset("nonexistent_key");
+    ASSERT_EQ(valueSpy.count(), 0);
+    ASSERT_EQ(globalSpy.count(), 0);
+}
+
+// Branch: isDefaultValue() returns true for unset key (default)
+TEST_F(ut_DConfigConn, isDefaultValue_defaultKey_returnsTrue) {
+    ASSERT_TRUE(conn->isDefaultValue("canExit"));
+}
+
+// Branch: isDefaultValue() returns false after value is set
+TEST_F(ut_DConfigConn, isDefaultValue_setKey_returnsFalse) {
+    conn->setValue("canExit", QDBusVariant{false});
+    ASSERT_FALSE(conn->isDefaultValue("canExit"));
+}
+
+// Branch: isDefaultValue() with non-existent key returns false
+TEST_F(ut_DConfigConn, isDefaultValue_nonExistentKey_returnsFalse) {
+    ASSERT_FALSE(conn->isDefaultValue("nonexistent_key"));
+}
+
+// Branch: contains() with non-existent key returns false
+TEST_F(ut_DConfigConn, contains_nonExistentKey_returnsFalse) {
+    ASSERT_FALSE(conn->contains("nonexistent_key"));
+}
+
+// Branch: contains() with existing key returns true
+TEST_F(ut_DConfigConn, contains_existingKey_returnsTrue) {
+    ASSERT_TRUE(conn->contains("canExit"));
+}
+
+// Branch: containsWithoutProp() with non-existent key returns false
+TEST_F(ut_DConfigConn, containsWithoutProp_nonExistentKey_returnsFalse) {
+    ASSERT_FALSE(conn->containsWithoutProp("nonexistent_key"));
+}
+
+// Branch: containsWithoutProp() with existing key returns true
+TEST_F(ut_DConfigConn, containsWithoutProp_existingKey_returnsTrue) {
+    ASSERT_TRUE(conn->containsWithoutProp("canExit"));
+}
+
+// Branch: visibility() with non-existent key returns ""
+TEST_F(ut_DConfigConn, visibility_nonExistentKey_returnsEmpty) {
+    ASSERT_EQ(conn->visibility("nonexistent_key"), QString());
+}
+
+// Branch: permissions() with non-existent key returns ""
+TEST_F(ut_DConfigConn, permissions_nonExistentKey_returnsEmpty) {
+    ASSERT_EQ(conn->permissions("nonexistent_key"), QString());
+}
+
+// Branch: path() returns formatted DBus path
+TEST_F(ut_DConfigConn, path_returnsFormattedPath) {
+    ASSERT_EQ(conn->path(), formatDBusObjectPath(conn->key()));
+}
+
+// Branch: version() returns version string
+TEST_F(ut_DConfigConn, version_returnsVersionString) {
+    QString ver = conn->version();
+    ASSERT_FALSE(ver.isEmpty());
+    ASSERT_TRUE(ver.contains('.'));
+}
+
+// Branch: keyList() returns list of keys
+TEST_F(ut_DConfigConn, keyList_returnsKeys) {
+    QStringList keys = conn->keyList();
+    ASSERT_TRUE(keys.contains("canExit"));
+    ASSERT_TRUE(keys.contains("key2"));
+    ASSERT_TRUE(keys.contains("array"));
+}
+
+// Branch: flags() with global key returns non-zero
+TEST_F(ut_DConfigConn, flags_globalKey_returnsNonZero) {
+    ASSERT_EQ(conn->flags("canExit"), 0);
+    ASSERT_NE(conn->flags("array"), 0);
+}
+
+// Branch: release() emits releaseChanged signal
+TEST_F(ut_DConfigConn, release_emitsReleaseChanged) {
+    QSignalSpy spy(conn, &DSGConfigConn::releaseChanged);
+    conn->release();
+    ASSERT_EQ(spy.count(), 1);
+}
+
+// Branch: hasPermissionByUid() returns true in non-DBus (test) env
+TEST_F(ut_DConfigConn, hasPermissionByUid_returnsTrueInTestEnv) {
+    ASSERT_TRUE(conn->hasPermissionByUid("canExit"));
+    ASSERT_TRUE(conn->hasPermissionByUid("key2"));
+}

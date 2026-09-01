@@ -55,13 +55,16 @@ find_program(GENHTML_PATH genhtml)
 if(LCOV_PATH AND GENHTML_PATH)
     add_custom_target(coverage
         COMMAND ${LCOV_PATH} --capture --directory ${CMAKE_BINARY_DIR}
+                --rc lcov_branch_coverage=1
                 --output-file ${CMAKE_BINARY_DIR}/coverage.info
         COMMAND ${LCOV_PATH} --remove ${CMAKE_BINARY_DIR}/coverage.info
+                --rc lcov_branch_coverage=1
                 '*/moc_*.cpp' '*/moc_*.h' '*/qrc_*.cpp' '*/ui_*.h' '*/qml_*.h'
                 '*/qmlcache_*.cpp' '*/_autogen/*' '*_json.h' '/usr/*'
                 '*/ut_*' '*/main.cpp' '*/test_helper.hpp' '*_adaptor.*'
                 --output-file ${CMAKE_BINARY_DIR}/coverage_filtered.info
         COMMAND ${GENHTML_PATH} ${CMAKE_BINARY_DIR}/coverage_filtered.info
+                --branch-coverage
                 --output-directory ${CMAKE_BINARY_DIR}/coverage_report
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Generating coverage report"

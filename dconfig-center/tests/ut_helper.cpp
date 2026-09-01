@@ -432,5 +432,4 @@ TEST_F(ut_helper, fetchUserInfos_nonEmpty) {
     ASSERT_TRUE(hasRoot);
 }
 
-</details>
 

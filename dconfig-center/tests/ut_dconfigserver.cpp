@@ -19,6 +19,7 @@
 #include "dconfigserver.h"
 #include "dconfigresource.h"
 #include "dconfigconn.h"
+#include "dconfigrefmanager.h"
 #include "test_helper.hpp"
 
 DCORE_USE_NAMESPACE
@@ -326,20 +327,22 @@ TEST_F(ut_DConfigServer, reload_withFileChange) {
     auto path = server->acquireManager(APP_ID, FILE_NAME, QString(""));
     ASSERT_EQ(server->resourceSize(), 1);
 
-    auto resource = server->resourceObject(getGenericResourceKey(path));
+    auto resource = server->resourceObject(getGenericResourceKey(path.path()));
     ASSERT_TRUE(resource);
     auto conn = resource->getConn(APP_ID, TestUid);
     ASSERT_TRUE(conn);
     ASSERT_FALSE(conn->containsWithoutProp("reloadTestKey"));
 
     // Modify the meta file: add a new key "reloadTestKey"
+    // Use separate QFile objects for read and write to avoid the issue where
+    // reopening the same QFile object in WriteOnly mode after ReadOnly+close fails.
     QString metaPath = configPath();
     {
         MetaFileGuard guard(metaPath);
-        QFile file(metaPath);
-        ASSERT_TRUE(file.open(QIODevice::ReadOnly));
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        file.close();
+        QFile readFile(metaPath);
+        ASSERT_TRUE(readFile.open(QIODevice::ReadOnly));
+        QJsonDocument doc = QJsonDocument::fromJson(readFile.readAll());
+        readFile.close();
         QJsonObject root = doc.object();
         QJsonObject contents = root.value("contents").toObject();
         QJsonObject newKey;
@@ -351,9 +354,10 @@ TEST_F(ut_DConfigServer, reload_withFileChange) {
         contents["reloadTestKey"] = newKey;
         root["contents"] = contents;
         doc.setObject(root);
-        ASSERT_TRUE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-        file.write(doc.toJson());
-        file.close();
+        QFile writeFile(metaPath);
+        ASSERT_TRUE(writeFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        writeFile.write(doc.toJson());
+        writeFile.close();
     }
 
     // Allow filesystem timestamp granularity to elapse
@@ -452,3 +456,113 @@ TEST_F(ut_DConfigServer, allConfigureFileSignatures_emptyPrefix_returnsEmpty) {
 }
 
 
+
+// Coverage-11: Branch coverage tests for DSGConfigServer
+
+// Branch: setDelayReleaseTime with negative value does nothing (early return)
+TEST_F(ut_DConfigServer, setDelayReleaseTime_negative_noChange) {
+    server->setDelayReleaseTime(100);
+    ASSERT_EQ(server->delayReleaseTime(), 100);
+    server->setDelayReleaseTime(-1);
+    ASSERT_EQ(server->delayReleaseTime(), 100);
+}
+
+// Branch: delayReleaseTime() getter
+TEST_F(ut_DConfigServer, delayReleaseTime_getter) {
+    server->setDelayReleaseTime(50);
+    ASSERT_EQ(server->delayReleaseTime(), 50);
+    server->setDelayReleaseTime(0);
+    ASSERT_EQ(server->delayReleaseTime(), 0);
+}
+
+// Branch: acquireManagerV2 with invalid UID returns empty QDBusObjectPath
+TEST_F(ut_DConfigServer, acquireManagerV2_invalidUid_returnsEmpty) {
+    auto path = server->acquireManagerV2(999999, APP_ID, FILE_NAME, QString(""));
+    ASSERT_TRUE(path.path().isEmpty());
+}
+
+// Branch: onReleaseChanged calls derefResource
+TEST_F(ut_DConfigServer, onReleaseChanged_derefResource) {
+    auto path = server->acquireManager(APP_ID, FILE_NAME, QString("")).path();
+    ASSERT_EQ(server->resourceSize(), 1);
+    auto resource = server->resourceObject(getGenericResourceKey(path));
+    ASSERT_TRUE(resource);
+    auto conn = resource->getConn(APP_ID, TestUid);
+    ASSERT_TRUE(conn);
+    server->onReleaseChanged("test.service", conn->key());
+    ASSERT_EQ(server->resourceSize(), 0);
+}
+
+// Branch: doSyncConfigCache with user key
+TEST_F(ut_DConfigServer, doSyncConfigCache_userKey) {
+    auto path = server->acquireManager(APP_ID, FILE_NAME, QString("")).path();
+    auto resource = server->resourceObject(getGenericResourceKey(path));
+    ASSERT_TRUE(resource);
+    auto conn = resource->getConn(APP_ID, TestUid);
+    ASSERT_TRUE(conn);
+    conn->setValue("canExit", QDBusVariant{false});
+
+    ConfigSyncBatchRequest request;
+    request.data << ConfigSyncRequestCache::userKey(conn->key());
+    server->doSyncConfigCache(request);
+    ASSERT_EQ(conn->value("canExit").variant(), false);
+}
+
+// Branch: doSyncConfigCache with global key
+TEST_F(ut_DConfigServer, doSyncConfigCache_globalKey) {
+    auto path = server->acquireManager(APP_ID, FILE_NAME, QString("")).path();
+    auto resource = server->resourceObject(getGenericResourceKey(path));
+    ASSERT_TRUE(resource);
+    auto conn = resource->getConn(APP_ID, TestUid);
+    ASSERT_TRUE(conn);
+    conn->setValue("array", QDBusVariant{QStringList{"new1", "new2"}});
+
+    auto resourceKey = getResourceKey(APP_ID, getGenericResourceKey(path));
+    ConfigSyncBatchRequest request;
+    request.data << ConfigSyncRequestCache::globalKey(resourceKey);
+    server->doSyncConfigCache(request);
+    ASSERT_EQ(conn->value("array").variant().toStringList(), QStringList({"new1", "new2"}));
+}
+
+// Branch: doSyncConfigCache with invalid key (neither user nor global)
+TEST_F(ut_DConfigServer, doSyncConfigCache_invalidKey) {
+    server->acquireManager(APP_ID, FILE_NAME, QString(""));
+    ASSERT_EQ(server->resourceSize(), 1);
+    ConfigSyncBatchRequest request;
+    request.data << "invalid_key";
+    server->doSyncConfigCache(request);
+    ASSERT_EQ(server->resourceSize(), 1);
+}
+
+// Branch: getResourceKeyByConfigCache with user key
+TEST_F(ut_DConfigServer, getResourceKeyByConfigCache_userKey) {
+    auto path = server->acquireManager(APP_ID, FILE_NAME, QString("")).path();
+    auto resource = server->resourceObject(getGenericResourceKey(path));
+    auto conn = resource->getConn(APP_ID, TestUid);
+    ConfigCacheKey userKey = ConfigSyncRequestCache::userKey(conn->key());
+    auto result = server->getResourceKeyByConfigCache(userKey);
+    ASSERT_FALSE(result.isEmpty());
+}
+
+// Branch: getResourceKeyByConfigCache with global key
+TEST_F(ut_DConfigServer, getResourceKeyByConfigCache_globalKey) {
+    auto path = server->acquireManager(APP_ID, FILE_NAME, QString("")).path();
+    auto resourceKey = getResourceKey(APP_ID, getGenericResourceKey(path));
+    ConfigCacheKey globalKey = ConfigSyncRequestCache::globalKey(resourceKey);
+    auto result = server->getResourceKeyByConfigCache(globalKey);
+    ASSERT_FALSE(result.isEmpty());
+}
+
+// Branch: getResourceKeyByConfigCache with invalid key
+TEST_F(ut_DConfigServer, getResourceKeyByConfigCache_invalidKey) {
+    auto result = server->getResourceKeyByConfigCache("invalid_key");
+    ASSERT_TRUE(result.isEmpty());
+}
+
+// Branch: removeUserData with no connections for that uid
+TEST_F(ut_DConfigServer, removeUserData_noConnections_noCrash) {
+    server->acquireManager(APP_ID, FILE_NAME, QString(""));
+    ASSERT_EQ(server->resourceSize(), 1);
+    server->removeUserData(99999);
+    ASSERT_EQ(server->resourceSize(), 1);
+}

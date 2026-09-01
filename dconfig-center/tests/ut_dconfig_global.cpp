@@ -280,6 +280,5 @@ TEST(ut_dconfig_global, ObjectPool_destructorClears) {
     SUCCEED();
 }
 
-</details>
 
 
