@@ -355,6 +355,7 @@ TEST_F(ut_DConfigServer, reload_withFileChange) {
         root["contents"] = contents;
         doc.setObject(root);
         QFile writeFile(metaPath);
+        QFile::setPermissions(metaPath, QFile::ReadOwner | QFile::WriteOwner | QFile::ReadGroup | QFile::ReadOther);
         ASSERT_TRUE(writeFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
         writeFile.write(doc.toJson());
         writeFile.close();
