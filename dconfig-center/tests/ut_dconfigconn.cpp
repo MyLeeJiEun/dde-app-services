@@ -356,8 +356,10 @@ TEST_F(ut_DConfigResource, save_preservesData) {
     ASSERT_EQ(conn->value("canExit").variant(), false);
     ASSERT_EQ(resource->connSize(), 1);
     // Assert the user cache file was actually written to disk.
-    QString userCachePath = configPrefixPath() + "/" + QString::number(TestUid) +
-        "/" + APP_ID + "/" + FILE_NAME + ".json";
+    // save() passes m_localPrefix to cache->save(), which prepends it to the
+    // cachePathPrefix (configPrefixPath() + "/<uid>") in applicationCacheDir().
+    QString userCachePath = QDir::cleanPath(LocalPrefix + "/" + configPrefixPath() + "/" +
+        QString::number(TestUid) + "/" + APP_ID + "/" + FILE_NAME + ".json");
     ASSERT_TRUE(QFile::exists(userCachePath));
 }
 
@@ -371,24 +373,28 @@ TEST_F(ut_DConfigResource, save_withAppid_preservesData) {
     ASSERT_EQ(conn->value("canExit").variant(), true);
     ASSERT_EQ(resource->connSize(), 1);
     // Assert the user cache file was actually written to disk.
-    QString userCachePath = configPrefixPath() + "/" + QString::number(TestUid) +
-        "/" + APP_ID + "/" + FILE_NAME + ".json";
+    QString userCachePath = QDir::cleanPath(LocalPrefix + "/" + configPrefixPath() + "/" +
+        QString::number(TestUid) + "/" + APP_ID + "/" + FILE_NAME + ".json");
     ASSERT_TRUE(QFile::exists(userCachePath));
 }
 
 TEST_F(ut_DConfigResource, reparse_existingResource) {
-    EnvGuard localDsgDir;
-    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     resource->load(APP_ID);
     resource->createConn(APP_ID, TestUid);
+    // reparse() calls newMeta->load() with empty localPrefix, using DSG_DATA_DIRS.
+    // Override to LocalPrefix so the meta file is found by reparse.
+    EnvGuard localDsgDir;
+    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     ASSERT_TRUE(resource->reparse(APP_ID));
 }
 
 TEST_F(ut_DConfigResource, reparse_metaLoadFailure_returnsFalse) {
-    EnvGuard localDsgDir;
-    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     resource->load(APP_ID);
     resource->createConn(APP_ID, TestUid);
+    // reparse() calls newMeta->load() with empty localPrefix, using DSG_DATA_DIRS.
+    // Override to LocalPrefix so reparse looks for meta in the test fixtures.
+    EnvGuard localDsgDir;
+    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     QString appMetaPath = configPath();
     QString genericMetaPath = noAppIdConfigPath();
     MetaFileGuard appGuard(appMetaPath);
@@ -409,11 +415,13 @@ TEST_F(ut_DConfigResource, doGlobalValueChanged_withoutSyncCache_noCrash) {
 }
 
 TEST_F(ut_DConfigResource, reparse_withRemovedKey_removesFromCache) {
-    EnvGuard localDsgDir;
-    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     resource->load(APP_ID);
     auto conn = resource->createConn(APP_ID, TestUid);
     ASSERT_TRUE(conn);
+    // reparse() calls newMeta->load() with empty localPrefix, using DSG_DATA_DIRS.
+    // Override to LocalPrefix so reparse finds the modified meta file.
+    EnvGuard localDsgDir;
+    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     conn->setValue("canExit", QDBusVariant{false});
     ASSERT_EQ(conn->value("canExit").variant(), false);
     QString metaPath = configPath();
@@ -437,11 +445,13 @@ TEST_F(ut_DConfigResource, reparse_withRemovedKey_removesFromCache) {
 }
 
 TEST_F(ut_DConfigResource, reparse_withPermissionChange_removesFromCache) {
-    EnvGuard localDsgDir;
-    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     resource->load(APP_ID);
     auto conn = resource->createConn(APP_ID, TestUid);
     ASSERT_TRUE(conn);
+    // reparse() calls newMeta->load() with empty localPrefix, using DSG_DATA_DIRS.
+    // Override to LocalPrefix so reparse finds the modified meta file.
+    EnvGuard localDsgDir;
+    localDsgDir.set("DSG_DATA_DIRS", (LocalPrefix + "/usr/share/dsg").toLocal8Bit());
     conn->setValue("canExit", QDBusVariant{false});
     ASSERT_EQ(conn->value("canExit").variant(), false);
     QString metaPath = configPath();
