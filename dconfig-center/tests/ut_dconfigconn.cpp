@@ -48,6 +48,12 @@ protected:
 
         ASSERT_TRUE(QFile::copy(":/config/example.json", path));
         ASSERT_TRUE(QFile::copy(":/config/example.json", noAppIdConfigPath()));
+        // QFile::copy from a Qt resource preserves the source's read-only mode
+        // (chmod 0444), which makes reparse tests' writeFile.open() fail with
+        // EACCES when run in isolation. Restore owner-write (0644) so tests
+        // stay order-independent.
+        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+        QFile::setPermissions(noAppIdConfigPath(), QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
         qputenv("DSG_CONFIG_CONNECTION_DISABLE_DBUS", "true");
         qputenv("STATE_DIRECTORY", LocalPrefix.toLocal8Bit());
         dsgDataDir.set("DSG_DATA_DIRS", "/usr/share/dsg");
@@ -117,6 +123,12 @@ protected:
 
         ASSERT_TRUE(QFile::copy(":/config/example.json", path));
         ASSERT_TRUE(QFile::copy(":/config/example.json", noAppIdConfigPath()));
+        // QFile::copy from a Qt resource preserves the source's read-only mode
+        // (chmod 0444), which makes reparse tests' writeFile.open() fail with
+        // EACCES when run in isolation. Restore owner-write (0644) so tests
+        // stay order-independent.
+        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+        QFile::setPermissions(noAppIdConfigPath(), QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
         qputenv("DSG_CONFIG_CONNECTION_DISABLE_DBUS", "true");
         qputenv("STATE_DIRECTORY", LocalPrefix.toLocal8Bit());
         dsgDataDir.set("DSG_DATA_DIRS", "/usr/share/dsg");
